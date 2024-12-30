@@ -1,0 +1,32 @@
+- name: Restart PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    state: restarted
+    enabled: yes  # Ensure PostgreSQL starts on boot
+
+- name: Start PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+    enabled: yes  # Ensure service starts on boot
+
+- name: Enable PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: yes  # Ensure the service is enabled on boot
+
+- name: Reload systemd manager configuration
+  ansible.builtin.systemd:
+    daemon_reload: yes  # Reload systemd to reflect changes
+
+- name: Restart SonarQube service
+  ansible.builtin.systemd:
+    name: sonar
+    state: restarted
+    enabled: yes  # Ensure SonarQube starts on boot
+
+- name: Start SonarQube service
+  ansible.builtin.systemd:
+    name: sonar
+    state: started
+    enabled: yes  # Ensure service starts on boot
