@@ -1,0 +1,28 @@
+---
+# Tasks for creating a Kubernetes service account and binding it to the admin role
+
+- name: Create Kubernetes service account for Jenkins
+  ansible.builtin.command:
+    cmd: kubectl create serviceaccount jenkins --namespace=default
+  become: true
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Bind Jenkins service account to the admin cluster role
+  ansible.builtin.command:
+    cmd: kubectl create clusterrolebinding jenkins-admin-binding --clusterrole=cluster-admin --serviceaccount=default:jenkins
+  become: true
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Create a token for the Jenkins service account
+  ansible.builtin.command:
+    cmd: kubectl create token jenkins --namespace=default
+  register: jenkins_token
+  become: true
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Output the Jenkins token
+  ansible.builtin.debug:
+    msg: "Jenkins token: {{ jenkins_token.stdout }}"
