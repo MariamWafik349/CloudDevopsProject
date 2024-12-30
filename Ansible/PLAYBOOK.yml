@@ -1,0 +1,6 @@
+---
+- hosts: tag__iSTNetworks-instance
+  become: yes
+  roles:
+    - role: minikube
+    - role: jenkins-minikube
