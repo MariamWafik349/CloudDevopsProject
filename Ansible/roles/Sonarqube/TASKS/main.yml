@@ -1,0 +1,194 @@
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: yes
+  # Ensures that the package cache is up-to-date, allowing the system to fetch the latest package information.
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - openjdk-17-jdk
+      - wget
+      - unzip
+      - gnupg
+      - ca-certificates
+    state: present
+  # Installs necessary tools for SonarQube and PostgreSQL setup, including Java (essential for SonarQube).
+
+- name: Install additional required packages
+  ansible.builtin.apt:
+    name:
+      - python3-psycopg2
+      - acl
+      - nginx
+    state: latest
+  # Ensures the latest versions of additional dependencies like ACL, web server (nginx), and Python bindings.
+
+- name: Update APT repositories
+  ansible.builtin.apt:
+    update_cache: yes
+    force_apt_get: yes
+    cache_valid_time: 3600
+  # Refreshes repositories, ensuring the system has access to the most recent packages.
+
+- name: Upgrade all system packages
+  ansible.builtin.apt:
+    upgrade: dist
+    force_apt_get: yes
+  # Upgrades all installed packages to their latest secure versions.
+
+- name: Add PostgreSQL 14 repository
+  ansible.builtin.shell: |
+    echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+    wget -qO - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+  args:
+    executable: /bin/bash
+  # Adds PostgreSQL 14 repository to ensure availability of the desired version.
+
+- name: Install PostgreSQL 14
+  ansible.builtin.apt:
+    name: postgresql-14
+    update_cache: yes
+  notify:
+    - Start PostgreSQL
+  # Installs PostgreSQL 14 and starts the service for SonarQube’s database backend.
+
+- name: Configure PostgreSQL to listen on all interfaces
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/14/main/postgresql.conf
+    regexp: '^listen_addresses\s*='
+    line: "listen_addresses='*'"
+    state: present
+  notify:
+    - Restart PostgreSQL
+  # Allows PostgreSQL to accept connections from any IP address.
+
+- name: Update PostgreSQL authentication configuration
+  ansible.builtin.blockinfile:
+    path: /etc/postgresql/14/main/pg_hba.conf
+    block: |
+      host    all             all             0.0.0.0/0                md5
+      host    all             all             ::/0                     md5
+  notify:
+    - Restart PostgreSQL
+  # Configures PostgreSQL to allow external connections with password authentication.
+
+- name: Create a PostgreSQL superuser
+  become: yes
+  become_user: postgres
+  ansible.builtin.postgresql_user:
+    name: "{{ postgres_root_user }}"
+    password: "{{ postgres_root_pass }}"
+    role_attr_flags: "CREATEDB,SUPERUSER,CREATEROLE"
+    encrypted: yes
+  # Creates a superuser for database administration.
+
+- name: Create SonarQube database user
+  become: yes
+  become_user: postgres
+  ansible.builtin.postgresql_user:
+    name: "{{ sonar_db_user }}"
+    password: "{{ sonar_db_password }}"
+    role_attr_flags: "LOGIN"
+    encrypted: yes
+  # Sets up a specific database user for SonarQube.
+
+- name: Create SonarQube database
+  become: yes
+  become_user: postgres
+  ansible.builtin.postgresql_db:
+    name: sonar
+    owner: "{{ sonar_db_user }}"
+  # Creates the SonarQube database with appropriate ownership.
+
+- name: Set kernel parameter for vm.max_map_count
+  ansible.builtin.sysctl:
+    name: vm.max_map_count
+    value: 262144
+    state: present
+    reload: yes
+  # Configures a system kernel parameter required by SonarQube for performance.
+
+- name: Persist kernel parameter in sysctl.conf
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.conf
+    regexp: '^vm.max_map_count'
+    line: 'vm.max_map_count=262144'
+    state: present
+  # Ensures the kernel parameter persists after reboots.
+
+- name: Download SonarQube archive
+  ansible.builtin.get_url:
+    url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{ sonarqube_version }}.zip"
+    dest: /tmp/sonarqube.zip
+  # Downloads the SonarQube distribution archive.
+
+- name: Extract SonarQube archive
+  ansible.builtin.unarchive:
+    src: /tmp/sonarqube.zip
+    dest: /opt/
+    remote_src: yes
+  # Extracts SonarQube files to the `/opt/` directory.
+
+- name: Create SonarQube user and group
+  ansible.builtin.group:
+    name: sonar
+    state: present
+  ansible.builtin.user:
+    name: sonar
+    group: sonar
+    home: /opt/sonarqube-{{ sonarqube_version }}
+  # Creates a dedicated user and group for SonarQube.
+
+- name: Set ownership of SonarQube directory
+  ansible.builtin.file:
+    path: /opt/sonarqube-{{ sonarqube_version }}
+    state: directory
+    owner: sonar
+    group: sonar
+    recurse: yes
+  # Ensures proper permissions for the SonarQube directory.
+
+- name: Configure SonarQube properties
+  ansible.builtin.blockinfile:
+    path: /opt/sonarqube-{{ sonarqube_version }}/conf/sonar.properties
+    block: |
+      sonar.jdbc.username={{ sonar_db_user }}
+      sonar.jdbc.password={{ sonar_db_password }}
+      sonar.jdbc.url=jdbc:postgresql://localhost:5432/sonar
+      sonar.web.port={{ sonar_web_port }}
+  # Configures database connection and web settings for SonarQube.
+
+- name: Create systemd service for SonarQube
+  ansible.builtin.blockinfile:
+    path: /etc/systemd/system/sonar.service
+    create: true
+    block: |
+      [Unit]
+      Description=SonarQube service
+      After=syslog.target network.target
+      [Service]
+      Type=forking
+      ExecStart=/opt/sonarqube-{{ sonarqube_version }}/bin/linux-x86-64/sonar.sh start
+      ExecStop=/opt/sonarqube-{{ sonarqube_version }}/bin/linux-x86-64/sonar.sh stop
+      User=sonar
+      Group=sonar
+      Restart=always
+      LimitNOFILE=65536
+      LimitNPROC=4096
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - Reload systemd
+    - Start SonarQube
+  # Sets up SonarQube as a managed systemd service.
+
+- name: Open SonarQube web port in the firewall
+  ansible.builtin.command: ufw allow {{ sonar_web_port }}
+  # Configures the firewall to allow traffic to SonarQube's web interface.
+
+- name: Reload systemd and start SonarQube
+  ansible.builtin.systemd:
+    name: sonar
+    state: started
+    enabled: yes
+  # Starts the SonarQube service and ensures it runs on boot.
