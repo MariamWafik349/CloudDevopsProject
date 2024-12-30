@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
       - name: finalprojectcode
-        image: maryamabualmagd/finalprojectcode:latest
+        image: mariamwafik/finalprojectcode:latest
         ports:
         - containerPort: 8081
