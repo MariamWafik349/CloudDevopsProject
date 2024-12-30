@@ -1,7 +1,0 @@
----
-- name: Install Git and update package index
-  apt:
-    name: git
-    state: present
-    update_cache: yes
-  become: true
