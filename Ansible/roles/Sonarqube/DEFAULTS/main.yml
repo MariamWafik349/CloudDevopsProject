@@ -1,6 +1,6 @@
-sonarqube_version: "9.9.1.69595"  # Version of SonarQube to be installed
+sonarqube_version: "9.9.1.69785"  # Version of SonarQube to be installed
 postgres_root_user: "root"        # PostgreSQL root username
-postgres_root_pass: "root@123"    # PostgreSQL root password
+postgres_root_pass: "root@106"    # PostgreSQL root password
 postgres_user: "postgres"         # Default PostgreSQL user
 postgres_password: "postgres"     # Default PostgreSQL password
 ansible_effective_user: "sonar"   # System user for SonarQube
